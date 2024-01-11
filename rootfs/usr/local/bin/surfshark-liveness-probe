@@ -1,0 +1,4 @@
+#!/bin/sh
+set -e
+while ! wg show wg-surfshark &> /dev/null; do sleep 0.1; done
+while ! nc -z $(wg show wg-surfshark endpoints | cut -d $'\t' -f 2 | cut -d : -f 1) 1443; do sleep 0.1; done
