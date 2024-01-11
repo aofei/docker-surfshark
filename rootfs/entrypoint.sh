@@ -70,8 +70,8 @@ remote $SURFSHARK_OVPN_REMOTE_IP $SURFSHARK_OVPN_REMOTE_PORT
 remote-cert-tls server
 dev surfshark-ovpn
 dev-type tun
-tun-mtu 1500
-mssfix 1450
+tun-mtu 1280
+mssfix 1230
 fast-io
 nobind
 ping 15
