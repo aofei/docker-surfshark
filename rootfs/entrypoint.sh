@@ -14,8 +14,6 @@ if [[ -z "$OVPN_SURFSHARK_REMOTE_HOST" ]]; then
 	echo "Error: \$OVPN_SURFSHARK_REMOTE_HOST is not set." >&2
 	exit 2
 fi
-OVPN_SURFSHARK_PROTOCOL=${OVPN_SURFSHARK_PROTOCOL:-udp}
-OVPN_SURFSHARK_REMOTE_PORT=$([[ "$OVPN_SURFSHARK_PROTOCOL" == "udp" ]] && echo "${OVPN_SURFSHARK_REMOTE_PORT:-1194}" || echo "${OVPN_SURFSHARK_REMOTE_PORT:-1443}")
 
 export TMPDIR=$(mktemp -d)
 trap "rm -rf $TMPDIR" EXIT
@@ -25,6 +23,20 @@ trap "rm -rf $TMPDIR" EXIT
 [[ $(sysctl -n net.ipv6.conf.lo.disable_ipv6) -eq 0 ]] && sysctl -w net.ipv6.conf.lo.disable_ipv6=1
 
 DEFAULT_ROUTE_VIA=$(ip route show default | head -1 | cut -d ' ' -f 3-)
+
+OVPN_SURFSHARK_PROTOCOL=${OVPN_SURFSHARK_PROTOCOL:-udp}
+if [[ "$OVPN_SURFSHARK_PROTOCOL" != "tcp" && "$OVPN_SURFSHARK_PROTOCOL" != "udp" ]]; then
+	echo "Error: \$OVPN_SURFSHARK_PROTOCOL is not set to tcp or udp." >&2
+	exit 2
+fi
+OVPN_SURFSHARK_REMOTE_PORT=$([[ "$OVPN_SURFSHARK_PROTOCOL" == "udp" ]] && echo "1194" || echo "1443")
+OVPN_SURFSHARK_REMOTE_IP=$(dig +short $OVPN_SURFSHARK_REMOTE_HOST A | head -1)
+if [[ -z "$OVPN_SURFSHARK_REMOTE_IP" ]]; then
+	echo "Error: No DNS A records found for $OVPN_SURFSHARK_REMOTE_HOST." >&2
+	exit 1
+fi
+echo "$OVPN_SURFSHARK_REMOTE_IP" > /tmp/ovpn-surfshark-remote-ip
+[[ $(ip route show $OVPN_SURFSHARK_REMOTE_IP | wc -l) -eq 0 ]] && ip route add $OVPN_SURFSHARK_REMOTE_IP via $DEFAULT_ROUTE_VIA
 
 OVPN_SURFSHARK_AUTH_USER_PASS_FILE=$(mktemp)
 chmod 600 $OVPN_SURFSHARK_AUTH_USER_PASS_FILE
@@ -38,9 +50,7 @@ chmod +x $OVPN_SURFSHARK_UP_SCRIPT
 cat << EOF > $OVPN_SURFSHARK_UP_SCRIPT
 #!/bin/sh
 set -e
-ip route add \$trusted_ip via $DEFAULT_ROUTE_VIA
-echo "\$trusted_ip" > /tmp/ovpn-surfshark-trusted-ip
-iptables -t nat -A POSTROUTING -o \$dev -j MASQUERADE
+iptables -t nat -A POSTROUTING -o ovpn-surfshark -j MASQUERADE
 EOF
 
 OVPN_SURFSHARK_DOWN_SCRIPT=$(mktemp)
@@ -48,9 +58,7 @@ chmod +x $OVPN_SURFSHARK_DOWN_SCRIPT
 cat << EOF > $OVPN_SURFSHARK_DOWN_SCRIPT
 #!/bin/sh
 set -e
-iptables -t nat -D POSTROUTING -o \$dev -j MASQUERADE
-rm -f /tmp/ovpn-surfshark-trusted-ip
-ip route del \$(ip route show \$trusted_ip | head -1)
+iptables -t nat -D POSTROUTING -o ovpn-surfshark -j MASQUERADE
 EOF
 
 OVPN_SURFSHARK_CONF_FILE=$(mktemp)
@@ -58,8 +66,7 @@ chmod 600 $OVPN_SURFSHARK_CONF_FILE
 cat << EOF > $OVPN_SURFSHARK_CONF_FILE
 client
 proto $OVPN_SURFSHARK_PROTOCOL
-remote $OVPN_SURFSHARK_REMOTE_HOST $OVPN_SURFSHARK_REMOTE_PORT
-remote-random
+remote $OVPN_SURFSHARK_REMOTE_IP $OVPN_SURFSHARK_REMOTE_PORT
 remote-cert-tls server
 dev ovpn-surfshark
 dev-type tun
@@ -68,7 +75,7 @@ mssfix 1450
 fast-io
 nobind
 ping 15
-ping-restart 0
+ping-restart 30
 
 pull-filter ignore "dhcp-option DNS"
 pull-filter ignore redirect-gateway
@@ -85,10 +92,7 @@ route 128.0.0.0 128.0.0.0
 
 script-security 2
 up $OVPN_SURFSHARK_UP_SCRIPT
-up-delay
 down $OVPN_SURFSHARK_DOWN_SCRIPT
-down-pre
-up-restart
 
 auth SHA512
 auth-user-pass $OVPN_SURFSHARK_AUTH_USER_PASS_FILE
