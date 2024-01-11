@@ -72,6 +72,8 @@ dev surfshark-ovpn
 dev-type tun
 tun-mtu 1280
 nobind
+fast-io
+mute-replay-warnings
 ping 15
 ping-restart 30
 
