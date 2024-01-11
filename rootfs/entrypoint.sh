@@ -71,13 +71,12 @@ remote-cert-tls server
 dev surfshark-ovpn
 dev-type tun
 tun-mtu 1280
-mssfix 1230
-fast-io
 nobind
 ping 15
 ping-restart 30
 
 pull-filter ignore "dhcp-option DNS"
+pull-filter ignore block-outside-dns
 pull-filter ignore redirect-gateway
 pull-filter ignore "route "
 
@@ -92,11 +91,13 @@ route 128.0.0.0 128.0.0.0
 
 script-security 2
 up $SURFSHARK_OVPN_UP_SCRIPT
+up-delay
 down $SURFSHARK_OVPN_DOWN_SCRIPT
 
 auth SHA512
 auth-user-pass $SURFSHARK_OVPN_AUTH_USER_PASS_FILE
 auth-nocache
+cipher AES-256-CBC
 <ca>
 -----BEGIN CERTIFICATE-----
 MIIFTTCCAzWgAwIBAgIJAMs9S3fqwv+mMA0GCSqGSIb3DQEBCwUAMD0xCzAJBgNV
