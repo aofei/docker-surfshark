@@ -2,16 +2,16 @@
 
 set -e
 
-if [[ -z "$OVPN_SURFSHARK_USERNAME" ]]; then
-	echo "Error: \$OVPN_SURFSHARK_USERNAME is not set." >&2
+if [[ -z "$SURFSHARK_OVPN_USERNAME" ]]; then
+	echo "Error: \$SURFSHARK_OVPN_USERNAME is not set." >&2
 	exit 2
 fi
-if [[ -z "$OVPN_SURFSHARK_PASSWORD" ]]; then
-	echo "Error: \$OVPN_SURFSHARK_PASSWORD is not set." >&2
+if [[ -z "$SURFSHARK_OVPN_PASSWORD" ]]; then
+	echo "Error: \$SURFSHARK_OVPN_PASSWORD is not set." >&2
 	exit 2
 fi
-if [[ -z "$OVPN_SURFSHARK_REMOTE_HOST" ]]; then
-	echo "Error: \$OVPN_SURFSHARK_REMOTE_HOST is not set." >&2
+if [[ -z "$SURFSHARK_OVPN_REMOTE_HOST" ]]; then
+	echo "Error: \$SURFSHARK_OVPN_REMOTE_HOST is not set." >&2
 	exit 2
 fi
 
@@ -24,51 +24,51 @@ trap "rm -rf $TMPDIR" EXIT
 
 DEFAULT_ROUTE_VIA=$(ip route show default | head -1 | cut -d ' ' -f 3-)
 
-OVPN_SURFSHARK_PROTOCOL=${OVPN_SURFSHARK_PROTOCOL:-udp}
-if [[ "$OVPN_SURFSHARK_PROTOCOL" != "tcp" && "$OVPN_SURFSHARK_PROTOCOL" != "udp" ]]; then
-	echo "Error: \$OVPN_SURFSHARK_PROTOCOL is not set to tcp or udp." >&2
+SURFSHARK_OVPN_PROTOCOL=${SURFSHARK_OVPN_PROTOCOL:-udp}
+if [[ "$SURFSHARK_OVPN_PROTOCOL" != "tcp" && "$SURFSHARK_OVPN_PROTOCOL" != "udp" ]]; then
+	echo "Error: \$SURFSHARK_OVPN_PROTOCOL is not set to tcp or udp." >&2
 	exit 2
 fi
-OVPN_SURFSHARK_REMOTE_PORT=$([[ "$OVPN_SURFSHARK_PROTOCOL" == "udp" ]] && echo "1194" || echo "1443")
-OVPN_SURFSHARK_REMOTE_IP=$(dig +short $OVPN_SURFSHARK_REMOTE_HOST A | head -1)
-if [[ -z "$OVPN_SURFSHARK_REMOTE_IP" ]]; then
-	echo "Error: No DNS A records found for $OVPN_SURFSHARK_REMOTE_HOST." >&2
+SURFSHARK_OVPN_REMOTE_PORT=$([[ "$SURFSHARK_OVPN_PROTOCOL" == "udp" ]] && echo "1194" || echo "1443")
+SURFSHARK_OVPN_REMOTE_IP=$(dig +short $SURFSHARK_OVPN_REMOTE_HOST A | head -1)
+if [[ -z "$SURFSHARK_OVPN_REMOTE_IP" ]]; then
+	echo "Error: No DNS A records found for $SURFSHARK_OVPN_REMOTE_HOST." >&2
 	exit 1
 fi
-echo "$OVPN_SURFSHARK_REMOTE_IP" > /tmp/ovpn-surfshark-remote-ip
-[[ $(ip route show $OVPN_SURFSHARK_REMOTE_IP | wc -l) -eq 0 ]] && ip route add $OVPN_SURFSHARK_REMOTE_IP via $DEFAULT_ROUTE_VIA
+echo "$SURFSHARK_OVPN_REMOTE_IP" > /tmp/surfshark-ovpn-remote-ip
+[[ $(ip route show $SURFSHARK_OVPN_REMOTE_IP | wc -l) -eq 0 ]] && ip route add $SURFSHARK_OVPN_REMOTE_IP via $DEFAULT_ROUTE_VIA
 
-OVPN_SURFSHARK_AUTH_USER_PASS_FILE=$(mktemp)
-chmod 600 $OVPN_SURFSHARK_AUTH_USER_PASS_FILE
-cat << EOF > $OVPN_SURFSHARK_AUTH_USER_PASS_FILE
-$OVPN_SURFSHARK_USERNAME
-$OVPN_SURFSHARK_PASSWORD
+SURFSHARK_OVPN_AUTH_USER_PASS_FILE=$(mktemp)
+chmod 600 $SURFSHARK_OVPN_AUTH_USER_PASS_FILE
+cat << EOF > $SURFSHARK_OVPN_AUTH_USER_PASS_FILE
+$SURFSHARK_OVPN_USERNAME
+$SURFSHARK_OVPN_PASSWORD
 EOF
 
-OVPN_SURFSHARK_UP_SCRIPT=$(mktemp)
-chmod +x $OVPN_SURFSHARK_UP_SCRIPT
-cat << EOF > $OVPN_SURFSHARK_UP_SCRIPT
+SURFSHARK_OVPN_UP_SCRIPT=$(mktemp)
+chmod +x $SURFSHARK_OVPN_UP_SCRIPT
+cat << EOF > $SURFSHARK_OVPN_UP_SCRIPT
 #!/bin/sh
 set -e
-iptables -t nat -A POSTROUTING -o ovpn-surfshark -j MASQUERADE
+iptables -t nat -A POSTROUTING -o surfshark-ovpn -j MASQUERADE
 EOF
 
-OVPN_SURFSHARK_DOWN_SCRIPT=$(mktemp)
-chmod +x $OVPN_SURFSHARK_DOWN_SCRIPT
-cat << EOF > $OVPN_SURFSHARK_DOWN_SCRIPT
+SURFSHARK_OVPN_DOWN_SCRIPT=$(mktemp)
+chmod +x $SURFSHARK_OVPN_DOWN_SCRIPT
+cat << EOF > $SURFSHARK_OVPN_DOWN_SCRIPT
 #!/bin/sh
 set -e
-iptables -t nat -D POSTROUTING -o ovpn-surfshark -j MASQUERADE
+iptables -t nat -D POSTROUTING -o surfshark-ovpn -j MASQUERADE
 EOF
 
-OVPN_SURFSHARK_CONF_FILE=$(mktemp)
-chmod 600 $OVPN_SURFSHARK_CONF_FILE
-cat << EOF > $OVPN_SURFSHARK_CONF_FILE
+SURFSHARK_OVPN_CONF_FILE=$(mktemp)
+chmod 600 $SURFSHARK_OVPN_CONF_FILE
+cat << EOF > $SURFSHARK_OVPN_CONF_FILE
 client
-proto $OVPN_SURFSHARK_PROTOCOL
-remote $OVPN_SURFSHARK_REMOTE_IP $OVPN_SURFSHARK_REMOTE_PORT
+proto $SURFSHARK_OVPN_PROTOCOL
+remote $SURFSHARK_OVPN_REMOTE_IP $SURFSHARK_OVPN_REMOTE_PORT
 remote-cert-tls server
-dev ovpn-surfshark
+dev surfshark-ovpn
 dev-type tun
 tun-mtu 1500
 mssfix 1450
@@ -91,11 +91,11 @@ route 126.0.0.0 255.0.0.0
 route 128.0.0.0 128.0.0.0
 
 script-security 2
-up $OVPN_SURFSHARK_UP_SCRIPT
-down $OVPN_SURFSHARK_DOWN_SCRIPT
+up $SURFSHARK_OVPN_UP_SCRIPT
+down $SURFSHARK_OVPN_DOWN_SCRIPT
 
 auth SHA512
-auth-user-pass $OVPN_SURFSHARK_AUTH_USER_PASS_FILE
+auth-user-pass $SURFSHARK_OVPN_AUTH_USER_PASS_FILE
 auth-nocache
 <ca>
 -----BEGIN CERTIFICATE-----
@@ -153,15 +153,15 @@ b260f4b45dec3285875589c97d3087c9
 </tls-auth>
 EOF
 
-OVPN_SURFSHARK_EXCLUDED_ROUTES=10.0.0.0/8,100.64.0.0/10,169.254.0.0/16,172.16.0.0/12,192.0.0.0/24,192.168.0.0/16,224.0.0.0/24,240.0.0.0/4,239.255.255.250/32,255.255.255.255/32
-for ROUTE in $(echo "$OVPN_SURFSHARK_EXCLUDED_ROUTES,$OVPN_SURFSHARK_EXTRA_EXCLUDED_ROUTES" | tr , "\n"); do
+SURFSHARK_OVPN_EXCLUDED_ROUTES=10.0.0.0/8,100.64.0.0/10,169.254.0.0/16,172.16.0.0/12,192.0.0.0/24,192.168.0.0/16,224.0.0.0/24,240.0.0.0/4,239.255.255.250/32,255.255.255.255/32
+for ROUTE in $(echo "$SURFSHARK_OVPN_EXCLUDED_ROUTES,$SURFSHARK_OVPN_EXTRA_EXCLUDED_ROUTES" | tr , "\n"); do
 	[[ $(ip route show $ROUTE | wc -l) -eq 0 ]] && ip route add $ROUTE via $DEFAULT_ROUTE_VIA
 done
 
 if [[ $# -gt 0 ]]; then
-	openvpn --daemon ovpn-surfshark --config $OVPN_SURFSHARK_CONF_FILE
+	openvpn --daemon surfshark-ovpn --config $SURFSHARK_OVPN_CONF_FILE
 	surfshark-liveness-probe
 	exec "$@"
 else
-	exec openvpn --config $OVPN_SURFSHARK_CONF_FILE
+	exec openvpn --config $SURFSHARK_OVPN_CONF_FILE
 fi
