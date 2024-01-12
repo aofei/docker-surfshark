@@ -10,8 +10,18 @@ if [[ -z "$SURFSHARK_OVPN_PASSWORD" ]]; then
 	echo "Error: \$SURFSHARK_OVPN_PASSWORD is not set." >&2
 	exit 2
 fi
-if [[ -z "$SURFSHARK_OVPN_REMOTE_HOST" ]]; then
-	echo "Error: \$SURFSHARK_OVPN_REMOTE_HOST is not set." >&2
+if [[ -n "$SURFSHARK_OVPN_PROTOCOL" ]]; then
+	if [[ "$SURFSHARK_OVPN_PROTOCOL" != "tcp" && "$SURFSHARK_OVPN_PROTOCOL" != "udp" ]]; then
+		echo "Error: \$SURFSHARK_OVPN_PROTOCOL must be empty, tcp or udp." >&2
+		exit 2
+	fi
+fi
+if [[ -z "$SURFSHARK_OVPN_REMOTE_HOST" && -z "$SURFSHARK_OVPN_REMOTE_IP" ]]; then
+	echo "Error: \$SURFSHARK_OVPN_REMOTE_HOST or \$SURFSHARK_OVPN_REMOTE_IP must be set." >&2
+	exit 2
+fi
+if [[ -n "$SURFSHARK_OVPN_REMOTE_HOST" && -n "$SURFSHARK_OVPN_REMOTE_IP" ]]; then
+	echo "Error: \$SURFSHARK_OVPN_REMOTE_HOST and \$SURFSHARK_OVPN_REMOTE_IP cannot be set at the same time." >&2
 	exit 2
 fi
 
@@ -25,18 +35,18 @@ trap "rm -rf $TMPDIR" EXIT
 DEFAULT_ROUTE_VIA=$(ip route show default | head -1 | cut -d ' ' -f 3-)
 
 SURFSHARK_OVPN_PROTOCOL=${SURFSHARK_OVPN_PROTOCOL:-udp}
-if [[ "$SURFSHARK_OVPN_PROTOCOL" != "tcp" && "$SURFSHARK_OVPN_PROTOCOL" != "udp" ]]; then
-	echo "Error: \$SURFSHARK_OVPN_PROTOCOL is not set to tcp or udp." >&2
-	exit 2
-fi
-SURFSHARK_OVPN_REMOTE_PORT=$([[ "$SURFSHARK_OVPN_PROTOCOL" == "udp" ]] && echo "1194" || echo "1443")
-SURFSHARK_OVPN_REMOTE_IP=$(dig +short $SURFSHARK_OVPN_REMOTE_HOST A | head -1)
-if [[ -z "$SURFSHARK_OVPN_REMOTE_IP" ]]; then
-	echo "Error: No DNS A records found for $SURFSHARK_OVPN_REMOTE_HOST." >&2
-	exit 1
+
+if [[ -n "$SURFSHARK_OVPN_REMOTE_HOST" ]]; then
+	SURFSHARK_OVPN_REMOTE_IP=$(dig +short $SURFSHARK_OVPN_REMOTE_HOST A | head -1)
+	if [[ -z "$SURFSHARK_OVPN_REMOTE_IP" ]]; then
+		echo "Error: No DNS A records found for $SURFSHARK_OVPN_REMOTE_HOST." >&2
+		exit 1
+	fi
 fi
 echo "$SURFSHARK_OVPN_REMOTE_IP" > /tmp/surfshark-ovpn-remote-ip
 [[ $(ip route show $SURFSHARK_OVPN_REMOTE_IP | wc -l) -eq 0 ]] && ip route add $SURFSHARK_OVPN_REMOTE_IP via $DEFAULT_ROUTE_VIA
+
+SURFSHARK_OVPN_REMOTE_PORT=${SURFSHARK_OVPN_REMOTE_PORT:-$([[ "$SURFSHARK_OVPN_PROTOCOL" == "udp" ]] && echo "1194" || echo "1443")}
 
 SURFSHARK_OVPN_AUTH_USER_PASS_FILE=$(mktemp)
 chmod 600 $SURFSHARK_OVPN_AUTH_USER_PASS_FILE
@@ -135,6 +145,9 @@ LqP/9PGZTSJiwmtRHJ/N5qYWIh9ju83APvLm/AGBTR2pXmj9G3KdVOkpIC7L35dI
 </ca>
 key-direction 1
 <tls-auth>
+#
+# 2048 bit OpenVPN static key
+#
 -----BEGIN OpenVPN Static key V1-----
 b02cb1d7c6fee5d4f89b8de72b51a8d0
 c7b282631d6fc19be1df6ebae9e2779e
