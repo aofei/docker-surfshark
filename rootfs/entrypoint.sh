@@ -37,7 +37,7 @@ DEFAULT_ROUTE_VIA=$(ip route show default | head -1 | cut -d ' ' -f 3-)
 SURFSHARK_OVPN_PROTOCOL=${SURFSHARK_OVPN_PROTOCOL:-udp}
 
 if [[ -n "$SURFSHARK_OVPN_REMOTE_HOST" ]]; then
-	SURFSHARK_OVPN_REMOTE_IP=$(dig +short $SURFSHARK_OVPN_REMOTE_HOST A | head -1)
+	SURFSHARK_OVPN_REMOTE_IP=$(dig +short $SURFSHARK_OVPN_REMOTE_HOST A | grep -v "\.$" | head -1)
 	if [[ -z "$SURFSHARK_OVPN_REMOTE_IP" ]]; then
 		echo "Error: No DNS A records found for $SURFSHARK_OVPN_REMOTE_HOST." >&2
 		exit 1
