@@ -158,6 +158,32 @@ for ROUTE in $(echo "$SURFSHARK_OVPN_EXCLUDED_ROUTES,$SURFSHARK_OVPN_EXTRA_EXCLU
 	[[ $(ip route show $ROUTE | wc -l) -eq 0 ]] && ip route add $ROUTE via $DEFAULT_ROUTE_VIA
 done
 
+SURFSHARK_OVPN_EXCLUDED_HOSTS_UPDATE_SCRIPT=$(mktemp)
+chmod +x $SURFSHARK_OVPN_EXCLUDED_HOSTS_UPDATE_SCRIPT
+cat << EOF > $SURFSHARK_OVPN_EXCLUDED_HOSTS_UPDATE_SCRIPT
+#!/bin/sh
+set -e
+for HOST in \$(echo "$SURFSHARK_OVPN_EXCLUDED_HOSTS" | tr , "\n"); do
+	for IP in \$(dig +short \$HOST A | grep -v '\.$'); do
+		[[ \$(ip route show \$IP | wc -l) -eq 0 ]] && ip route add \$IP via $DEFAULT_ROUTE_VIA
+	done
+done
+EOF
+sh $SURFSHARK_OVPN_EXCLUDED_HOSTS_UPDATE_SCRIPT
+
+mkdir -p /etc/periodic/minutely
+ln -sf $SURFSHARK_OVPN_EXCLUDED_HOSTS_UPDATE_SCRIPT /etc/periodic/minutely/surfshark-ovpn-excluded-hosts-update
+cat << EOF > /etc/crontabs/root
+# min   hour    day     month   weekday command
+*       *       *       *       *       run-parts /etc/periodic/minutely
+*/15    *       *       *       *       run-parts /etc/periodic/15min
+0       *       *       *       *       run-parts /etc/periodic/hourly
+0       2       *       *       *       run-parts /etc/periodic/daily
+0       3       *       *       6       run-parts /etc/periodic/weekly
+0       5       1       *       *       run-parts /etc/periodic/monthly
+EOF
+crond
+
 if [[ $# -gt 0 ]]; then
 	openvpn --daemon surfshark-ovpn --config $SURFSHARK_OVPN_CONF_FILE
 	surfshark-liveness-probe
