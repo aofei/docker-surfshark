@@ -47,7 +47,7 @@ if [[ -n "${SURFSHARK_OVPN_REMOTE_HOST}" ]]; then
 	fi
 fi
 echo "${SURFSHARK_OVPN_REMOTE_IP}" > "${SURFSHARK_STATE_DIR}/ovpn-remote-ip"
-[[ "$(ip route show "${SURFSHARK_OVPN_REMOTE_IP}" | wc -l)" -eq 0 ]] && ip route add "${SURFSHARK_OVPN_REMOTE_IP}" via "${DEFAULT_ROUTE_VIA}"
+[[ "$(ip route show "${SURFSHARK_OVPN_REMOTE_IP}" | wc -l)" -eq 0 ]] && ip route add "${SURFSHARK_OVPN_REMOTE_IP}" via ${DEFAULT_ROUTE_VIA}
 
 SURFSHARK_OVPN_REMOTE_PORT="${SURFSHARK_OVPN_REMOTE_PORT:-"$([[ "${SURFSHARK_OVPN_PROTOCOL}" == "udp" ]] && echo "1194" || echo "1443")"}"
 
@@ -152,14 +152,14 @@ b260f4b45dec3285875589c97d3087c9
 EOF
 
 SURFSHARK_OVPN_NAT_RULE="POSTROUTING -o surfshark-ovpn -j MASQUERADE"
-if ! iptables -t nat -C "${SURFSHARK_OVPN_NAT_RULE}" &> /dev/null; then
-	iptables -t nat -A "${SURFSHARK_OVPN_NAT_RULE}"
+if ! iptables -t nat -C ${SURFSHARK_OVPN_NAT_RULE} &> /dev/null; then
+	iptables -t nat -A ${SURFSHARK_OVPN_NAT_RULE}
 fi
 
 SURFSHARK_OVPN_EXCLUDED_ROUTES=10.0.0.0/8,100.64.0.0/10,169.254.0.0/16,172.16.0.0/12,192.0.0.0/24,192.168.0.0/16,224.0.0.0/24,240.0.0.0/4,239.255.255.250/32,255.255.255.255/32
 for ROUTE in "$(echo "${SURFSHARK_OVPN_EXCLUDED_ROUTES},${SURFSHARK_OVPN_EXTRA_EXCLUDED_ROUTES}" | tr , "\n")"; do
 	if [[ -z "${ROUTE}" ]]; then continue; fi
-	[[ "$(ip route show "${ROUTE}" | wc -l)" -eq 0 ]] && ip route add "${ROUTE}" via "${DEFAULT_ROUTE_VIA}"
+	[[ "$(ip route show "${ROUTE}" | wc -l)" -eq 0 ]] && ip route add "${ROUTE}" via ${DEFAULT_ROUTE_VIA}
 done
 
 SURFSHARK_OVPN_EXCLUDED_HOSTS_UPDATE_SCRIPT="$(mktemp)"
@@ -170,7 +170,7 @@ set -e
 for HOST in "\$(echo "${SURFSHARK_OVPN_EXCLUDED_HOSTS}" | tr , "\n")"; do
 	if [[ -z "\${HOST}" ]]; then continue; fi
 	for IP in "\$(dig +short "\${HOST}" A | grep -v '\.$')"; do
-		[[ "\$(ip route show "\${IP}" | wc -l)" -eq 0 ]] && ip route add "\${IP}" via "${DEFAULT_ROUTE_VIA}"
+		[[ "\$(ip route show "\${IP}" | wc -l)" -eq 0 ]] && ip route add "\${IP}" via ${DEFAULT_ROUTE_VIA}
 	done
 done
 EOF
