@@ -2,4 +2,4 @@
 set -e
 SURFSHARK_STATE_DIR=/var/lib/surfshark
 while [[ ! -d /sys/class/net/surfshark-ovpn ]]; do sleep 0.1; done
-while ! nc -z $(cat ${SURFSHARK_STATE_DIR}/ovpn-remote-ip) 1443; do sleep 0.1; done
+while ! nc -z "$(cat "${SURFSHARK_STATE_DIR}/ovpn-remote-ip")" 1443; do sleep 0.1; done
