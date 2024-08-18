@@ -157,7 +157,7 @@ if ! iptables -t nat -C ${SURFSHARK_OVPN_NAT_RULE} &> /dev/null; then
 fi
 
 SURFSHARK_OVPN_EXCLUDED_ROUTES=10.0.0.0/8,100.64.0.0/10,169.254.0.0/16,172.16.0.0/12,192.0.0.0/24,192.168.0.0/16,224.0.0.0/24,240.0.0.0/4,239.255.255.250/32,255.255.255.255/32
-for ROUTE in "$(echo "${SURFSHARK_OVPN_EXCLUDED_ROUTES},${SURFSHARK_OVPN_EXTRA_EXCLUDED_ROUTES}" | tr , "\n")"; do
+for ROUTE in $(echo "${SURFSHARK_OVPN_EXCLUDED_ROUTES},${SURFSHARK_OVPN_EXTRA_EXCLUDED_ROUTES}" | tr , "\n"); do
 	if [[ -z "${ROUTE}" ]]; then continue; fi
 	[[ "$(ip route show "${ROUTE}" | wc -l)" -eq 0 ]] && ip route add "${ROUTE}" via ${DEFAULT_ROUTE_VIA}
 done
@@ -167,9 +167,9 @@ chmod +x "${SURFSHARK_OVPN_EXCLUDED_HOSTS_UPDATE_SCRIPT}"
 cat << EOF > "${SURFSHARK_OVPN_EXCLUDED_HOSTS_UPDATE_SCRIPT}"
 #!/bin/sh
 set -e
-for HOST in "\$(echo "${SURFSHARK_OVPN_EXCLUDED_HOSTS}" | tr , "\n")"; do
+for HOST in \$(echo "${SURFSHARK_OVPN_EXCLUDED_HOSTS}" | tr , "\n"); do
 	if [[ -z "\${HOST}" ]]; then continue; fi
-	for IP in "\$(dig +short "\${HOST}" A | grep -v '\.$')"; do
+	for IP in \$(dig +short "\${HOST}" A | grep -v '\.$'); do
 		[[ "\$(ip route show "\${IP}" | wc -l)" -eq 0 ]] && ip route add "\${IP}" via ${DEFAULT_ROUTE_VIA}
 	done
 done
