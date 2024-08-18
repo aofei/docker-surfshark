@@ -89,7 +89,7 @@ route 126.0.0.0 255.0.0.0
 route 128.0.0.0 128.0.0.0
 
 auth SHA512
-auth-user-pass ${SURFSHARK_OVPN_AUTH_USER_PASS_FILE}
+auth-user-pass "${SURFSHARK_OVPN_AUTH_USER_PASS_FILE}"
 auth-nocache
 cipher AES-256-CBC
 <ca>
