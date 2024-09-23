@@ -40,7 +40,7 @@ mkdir -p "${SURFSHARK_STATE_DIR}"
 SURFSHARK_OVPN_PROTOCOL="${SURFSHARK_OVPN_PROTOCOL:-udp}"
 
 if [[ -n "${SURFSHARK_OVPN_REMOTE_HOST}" ]]; then
-	SURFSHARK_OVPN_REMOTE_IP="$(dig +short "${SURFSHARK_OVPN_REMOTE_HOST}" A | grep -v "\.$" | head -1)"
+	SURFSHARK_OVPN_REMOTE_IP="$(nslookup -type=A "${SURFSHARK_OVPN_REMOTE_HOST}" | awk '/^Address: / { print $2 }' | head -1)"
 	if [[ -z "${SURFSHARK_OVPN_REMOTE_IP}" ]]; then
 		echo "Error: No DNS A records found for ${SURFSHARK_OVPN_REMOTE_HOST}." >&2
 		exit 1
@@ -56,6 +56,31 @@ chmod 600 "${SURFSHARK_OVPN_AUTH_USER_PASS_FILE}"
 cat << EOF > "${SURFSHARK_OVPN_AUTH_USER_PASS_FILE}"
 ${SURFSHARK_OVPN_USERNAME}
 ${SURFSHARK_OVPN_PASSWORD}
+EOF
+
+SURFSHARK_OVPN_INCLUDED_ROUTES="${SURFSHARK_OVPN_INCLUDED_ROUTES:-0.0.0.0/2,64.0.0.0/2,96.0.0.0/3,112.0.0.0/4,120.0.0.0/5,124.0.0.0/6,126.0.0.0/7,128.0.0.0/1}"
+SURFSHARK_OVPN_EXCLUDED_ROUTES="${SURFSHARK_OVPN_EXCLUDED_ROUTES:-10.0.0.0/8,100.64.0.0/10,169.254.0.0/16,172.16.0.0/12,192.0.0.0/24,192.168.0.0/16,224.0.0.0/24,240.0.0.0/4,239.255.255.250/32,255.255.255.255/32}"
+
+SURFSHARK_OVPN_UP_SCRIPT="$(mktemp)"
+chmod +x "${SURFSHARK_OVPN_UP_SCRIPT}"
+cat << EOF > "${SURFSHARK_OVPN_UP_SCRIPT}"
+#!/bin/sh
+
+set -e
+
+SURFSHARK_OVPN_NAT_RULE="POSTROUTING -o surfshark-ovpn -j MASQUERADE"
+if ! iptables -t nat -C \${SURFSHARK_OVPN_NAT_RULE} &> /dev/null; then
+	iptables -t nat -A \${SURFSHARK_OVPN_NAT_RULE}
+fi
+
+add_routes() {
+	for ROUTE in \$(echo "\$1" | tr , "\n"); do
+		[[ -z "\${ROUTE}" ]] && continue
+		[[ "\$(ip route show "\${ROUTE}" | wc -l)" -eq 0 ]] && ip route add "\${ROUTE}" \$2
+	done
+}
+add_routes "${SURFSHARK_OVPN_EXCLUDED_ROUTES},${SURFSHARK_OVPN_EXTRA_EXCLUDED_ROUTES}" "via ${DEFAULT_ROUTE_VIA}"
+add_routes "${SURFSHARK_OVPN_INCLUDED_ROUTES},${SURFSHARK_OVPN_EXTRA_INCLUDED_ROUTES}" "dev surfshark-ovpn"
 EOF
 
 SURFSHARK_OVPN_CONF_FILE="$(mktemp)"
@@ -79,19 +104,15 @@ pull-filter ignore block-outside-dns
 pull-filter ignore redirect-gateway
 pull-filter ignore "route "
 
-route 0.0.0.0 192.0.0.0
-route 64.0.0.0 224.0.0.0
-route 96.0.0.0 240.0.0.0
-route 112.0.0.0 248.0.0.0
-route 120.0.0.0 252.0.0.0
-route 124.0.0.0 254.0.0.0
-route 126.0.0.0 255.0.0.0
-route 128.0.0.0 128.0.0.0
+script-security 2
+up "${SURFSHARK_OVPN_UP_SCRIPT}"
+up-delay
 
 auth SHA512
 auth-user-pass "${SURFSHARK_OVPN_AUTH_USER_PASS_FILE}"
 auth-nocache
 cipher AES-256-CBC
+data-ciphers AES-256-GCM:AES-128-GCM:CHACHA20-POLY1305:AES-256-CBC
 <ca>
 -----BEGIN CERTIFICATE-----
 MIIFTTCCAzWgAwIBAgIJAMs9S3fqwv+mMA0GCSqGSIb3DQEBCwUAMD0xCzAJBgNV
@@ -151,25 +172,14 @@ b260f4b45dec3285875589c97d3087c9
 </tls-auth>
 EOF
 
-SURFSHARK_OVPN_NAT_RULE="POSTROUTING -o surfshark-ovpn -j MASQUERADE"
-if ! iptables -t nat -C ${SURFSHARK_OVPN_NAT_RULE} &> /dev/null; then
-	iptables -t nat -A ${SURFSHARK_OVPN_NAT_RULE}
-fi
-
-SURFSHARK_OVPN_EXCLUDED_ROUTES=10.0.0.0/8,100.64.0.0/10,169.254.0.0/16,172.16.0.0/12,192.0.0.0/24,192.168.0.0/16,224.0.0.0/24,240.0.0.0/4,239.255.255.250/32,255.255.255.255/32
-for ROUTE in $(echo "${SURFSHARK_OVPN_EXCLUDED_ROUTES},${SURFSHARK_OVPN_EXTRA_EXCLUDED_ROUTES}" | tr , "\n"); do
-	if [[ -z "${ROUTE}" ]]; then continue; fi
-	[[ "$(ip route show "${ROUTE}" | wc -l)" -eq 0 ]] && ip route add "${ROUTE}" via ${DEFAULT_ROUTE_VIA}
-done
-
 SURFSHARK_OVPN_EXCLUDED_HOSTS_UPDATE_SCRIPT="$(mktemp)"
 chmod +x "${SURFSHARK_OVPN_EXCLUDED_HOSTS_UPDATE_SCRIPT}"
 cat << EOF > "${SURFSHARK_OVPN_EXCLUDED_HOSTS_UPDATE_SCRIPT}"
 #!/bin/sh
 set -e
 for HOST in \$(echo "${SURFSHARK_OVPN_EXCLUDED_HOSTS}" | tr , "\n"); do
-	if [[ -z "\${HOST}" ]]; then continue; fi
-	for IP in \$(dig +short "\${HOST}" A | grep -v '\.$'); do
+	[[ -z "\${HOST}" ]] && continue
+	for IP in \$(nslookup -type=A "\${HOST}" | awk '/^Address: / { print \$2 }'); do
 		[[ "\$(ip route show "\${IP}" | wc -l)" -eq 0 ]] && ip route add "\${IP}" via ${DEFAULT_ROUTE_VIA}
 	done
 done
