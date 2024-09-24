@@ -16,12 +16,8 @@ if [[ -n "${SURFSHARK_OVPN_PROTOCOL}" ]]; then
 		exit 2
 	fi
 fi
-if [[ -z "${SURFSHARK_OVPN_REMOTE_HOST}" && -z "${SURFSHARK_OVPN_REMOTE_IP}" ]]; then
-	echo "Error: SURFSHARK_OVPN_REMOTE_HOST or SURFSHARK_OVPN_REMOTE_IP must be set." >&2
-	exit 2
-fi
-if [[ -n "${SURFSHARK_OVPN_REMOTE_HOST}" && -n "${SURFSHARK_OVPN_REMOTE_IP}" ]]; then
-	echo "Error: SURFSHARK_OVPN_REMOTE_HOST and SURFSHARK_OVPN_REMOTE_IP cannot be set at the same time." >&2
+if [[ -z "${SURFSHARK_OVPN_REMOTE_HOST}" ]]; then
+	echo "Error: SURFSHARK_OVPN_REMOTE_HOST is not set." >&2
 	exit 2
 fi
 
@@ -38,16 +34,6 @@ SURFSHARK_STATE_DIR=/var/lib/surfshark
 mkdir -p "${SURFSHARK_STATE_DIR}"
 
 SURFSHARK_OVPN_PROTOCOL="${SURFSHARK_OVPN_PROTOCOL:-udp}"
-
-if [[ -n "${SURFSHARK_OVPN_REMOTE_HOST}" ]]; then
-	SURFSHARK_OVPN_REMOTE_IP="$(nslookup -type=A "${SURFSHARK_OVPN_REMOTE_HOST}" | awk '/^Address: / { print $2 }' | head -1)"
-	if [[ -z "${SURFSHARK_OVPN_REMOTE_IP}" ]]; then
-		echo "Error: No DNS A records found for ${SURFSHARK_OVPN_REMOTE_HOST}." >&2
-		exit 1
-	fi
-fi
-echo "${SURFSHARK_OVPN_REMOTE_IP}" > "${SURFSHARK_STATE_DIR}/ovpn-remote-ip"
-[[ "$(ip route show "${SURFSHARK_OVPN_REMOTE_IP}" | wc -l)" -eq 0 ]] && ip route add "${SURFSHARK_OVPN_REMOTE_IP}" via ${DEFAULT_ROUTE_VIA}
 
 SURFSHARK_OVPN_REMOTE_PORT="${SURFSHARK_OVPN_REMOTE_PORT:-"$([[ "${SURFSHARK_OVPN_PROTOCOL}" == "udp" ]] && echo "1194" || echo "1443")"}"
 
@@ -67,6 +53,10 @@ cat << EOF > "${SURFSHARK_OVPN_UP_SCRIPT}"
 #!/bin/sh
 
 set -e
+
+SURFSHARK_OVPN_REMOTE_IP="\${trusted_ip}"
+echo "\${SURFSHARK_OVPN_REMOTE_IP}" > "${SURFSHARK_STATE_DIR}/ovpn-remote-ip"
+[[ "\$(ip route show "\${SURFSHARK_OVPN_REMOTE_IP}" | wc -l)" -eq 0 ]] && ip route add "\${SURFSHARK_OVPN_REMOTE_IP}" via ${DEFAULT_ROUTE_VIA}
 
 SURFSHARK_OVPN_NAT_RULE="POSTROUTING -o surfshark-ovpn -j MASQUERADE"
 if ! iptables -t nat -C \${SURFSHARK_OVPN_NAT_RULE} &> /dev/null; then
@@ -88,7 +78,7 @@ chmod 600 "${SURFSHARK_OVPN_CONF_FILE}"
 cat << EOF > "${SURFSHARK_OVPN_CONF_FILE}"
 client
 proto ${SURFSHARK_OVPN_PROTOCOL}
-remote ${SURFSHARK_OVPN_REMOTE_IP} ${SURFSHARK_OVPN_REMOTE_PORT}
+remote ${SURFSHARK_OVPN_REMOTE_HOST} ${SURFSHARK_OVPN_REMOTE_PORT}
 remote-cert-tls server
 dev surfshark-ovpn
 dev-type tun
@@ -201,7 +191,7 @@ crond
 
 if [[ $# -gt 0 ]]; then
 	openvpn --daemon surfshark-ovpn --config "${SURFSHARK_OVPN_CONF_FILE}"
-	surfshark-liveness-probe
+	while [[ ! -d /sys/class/net/surfshark-ovpn ]]; do sleep 0.1; done
 	exec "$@"
 else
 	exec openvpn --config "${SURFSHARK_OVPN_CONF_FILE}"
