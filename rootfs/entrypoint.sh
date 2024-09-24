@@ -24,10 +24,6 @@ fi
 export TMPDIR="$(mktemp -d)"
 trap "rm -rf \"${TMPDIR}\"" EXIT
 
-[[ "$(sysctl -n net.ipv6.conf.all.disable_ipv6)" -eq 0 ]] && sysctl -w net.ipv6.conf.all.disable_ipv6=1
-[[ "$(sysctl -n net.ipv6.conf.default.disable_ipv6)" -eq 0 ]] && sysctl -w net.ipv6.conf.default.disable_ipv6=1
-[[ "$(sysctl -n net.ipv6.conf.lo.disable_ipv6)" -eq 0 ]] && sysctl -w net.ipv6.conf.lo.disable_ipv6=1
-
 DEFAULT_ROUTE_VIA="$(ip route show default 0.0.0.0/0 | head -1 | cut -d ' ' -f 3-)"
 
 SURFSHARK_STATE_DIR=/var/lib/surfshark
