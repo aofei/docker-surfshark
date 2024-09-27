@@ -52,12 +52,6 @@ set -e
 
 SURFSHARK_OVPN_REMOTE_IP="\${trusted_ip}"
 echo "\${SURFSHARK_OVPN_REMOTE_IP}" > "${SURFSHARK_STATE_DIR}/ovpn-remote-ip"
-[[ "\$(ip route show "\${SURFSHARK_OVPN_REMOTE_IP}" | wc -l)" -eq 0 ]] && ip route add "\${SURFSHARK_OVPN_REMOTE_IP}" via ${DEFAULT_ROUTE_VIA}
-
-SURFSHARK_OVPN_NAT_RULE="POSTROUTING -o surfshark-ovpn -j MASQUERADE"
-if ! iptables -t nat -C \${SURFSHARK_OVPN_NAT_RULE} &> /dev/null; then
-	iptables -t nat -A \${SURFSHARK_OVPN_NAT_RULE}
-fi
 
 add_routes() {
 	for ROUTE in \$(echo "\$1" | tr , "\n"); do
@@ -65,7 +59,7 @@ add_routes() {
 		[[ "\$(ip route show "\${ROUTE}" | wc -l)" -eq 0 ]] && ip route add "\${ROUTE}" \$2
 	done
 }
-add_routes "${SURFSHARK_OVPN_EXCLUDED_ROUTES},${SURFSHARK_OVPN_EXTRA_EXCLUDED_ROUTES}" "via ${DEFAULT_ROUTE_VIA}"
+add_routes "\${SURFSHARK_OVPN_REMOTE_IP},${SURFSHARK_OVPN_EXCLUDED_ROUTES},${SURFSHARK_OVPN_EXTRA_EXCLUDED_ROUTES}" "via ${DEFAULT_ROUTE_VIA}"
 add_routes "${SURFSHARK_OVPN_INCLUDED_ROUTES},${SURFSHARK_OVPN_EXTRA_INCLUDED_ROUTES}" "dev surfshark-ovpn"
 EOF
 
