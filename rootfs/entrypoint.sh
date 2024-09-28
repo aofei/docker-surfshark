@@ -10,14 +10,19 @@ if [[ -z "${SURFSHARK_OVPN_PASSWORD}" ]]; then
 	echo "Error: SURFSHARK_OVPN_PASSWORD is not set." >&2
 	exit 2
 fi
-if [[ -n "${SURFSHARK_OVPN_PROTOCOL}" ]]; then
-	if [[ "${SURFSHARK_OVPN_PROTOCOL}" != "tcp" && "${SURFSHARK_OVPN_PROTOCOL}" != "udp" ]]; then
-		echo "Error: SURFSHARK_OVPN_PROTOCOL must be empty, tcp or udp." >&2
-		exit 2
-	fi
+if [[ -z "${SURFSHARK_OVPN_PROTOCOL}" ]]; then
+	echo "Error: SURFSHARK_OVPN_PROTOCOL is not set." >&2
+	exit 2
+elif [[ "${SURFSHARK_OVPN_PROTOCOL}" != "tcp" && "${SURFSHARK_OVPN_PROTOCOL}" != "udp" ]]; then
+	echo "Error: SURFSHARK_OVPN_PROTOCOL must be tcp or udp." >&2
+	exit 2
 fi
 if [[ -z "${SURFSHARK_OVPN_REMOTE_HOST}" ]]; then
 	echo "Error: SURFSHARK_OVPN_REMOTE_HOST is not set." >&2
+	exit 2
+fi
+if [[ -z "${SURFSHARK_OVPN_REMOTE_PORT}" ]]; then
+	echo "Error: SURFSHARK_OVPN_REMOTE_PORT is not set." >&2
 	exit 2
 fi
 
@@ -29,19 +34,12 @@ DEFAULT_ROUTE_VIA="$(ip route show default 0.0.0.0/0 | head -1 | cut -d ' ' -f 3
 SURFSHARK_STATE_DIR=/var/lib/surfshark
 mkdir -p "${SURFSHARK_STATE_DIR}"
 
-SURFSHARK_OVPN_PROTOCOL="${SURFSHARK_OVPN_PROTOCOL:-udp}"
-
-SURFSHARK_OVPN_REMOTE_PORT="${SURFSHARK_OVPN_REMOTE_PORT:-"$([[ "${SURFSHARK_OVPN_PROTOCOL}" == "udp" ]] && echo "1194" || echo "1443")"}"
-
 SURFSHARK_OVPN_AUTH_USER_PASS_FILE="$(mktemp)"
 chmod 600 "${SURFSHARK_OVPN_AUTH_USER_PASS_FILE}"
 cat << EOF > "${SURFSHARK_OVPN_AUTH_USER_PASS_FILE}"
 ${SURFSHARK_OVPN_USERNAME}
 ${SURFSHARK_OVPN_PASSWORD}
 EOF
-
-SURFSHARK_OVPN_INCLUDED_ROUTES="${SURFSHARK_OVPN_INCLUDED_ROUTES:-0.0.0.0/2,64.0.0.0/2,96.0.0.0/3,112.0.0.0/4,120.0.0.0/5,124.0.0.0/6,126.0.0.0/7,128.0.0.0/1}"
-SURFSHARK_OVPN_EXCLUDED_ROUTES="${SURFSHARK_OVPN_EXCLUDED_ROUTES:-10.0.0.0/8,100.64.0.0/10,169.254.0.0/16,172.16.0.0/12,192.0.0.0/24,192.168.0.0/16,224.0.0.0/24,240.0.0.0/4,239.255.255.250/32,255.255.255.255/32}"
 
 SURFSHARK_OVPN_UP_SCRIPT="$(mktemp)"
 chmod +x "${SURFSHARK_OVPN_UP_SCRIPT}"
@@ -59,8 +57,8 @@ add_routes() {
 		[[ "\$(ip route show "\${ROUTE}" | wc -l)" -eq 0 ]] && ip route add "\${ROUTE}" \$2
 	done
 }
-add_routes "\${SURFSHARK_OVPN_REMOTE_IP},${SURFSHARK_OVPN_EXCLUDED_ROUTES},${SURFSHARK_OVPN_EXTRA_EXCLUDED_ROUTES}" "via ${DEFAULT_ROUTE_VIA}"
-add_routes "${SURFSHARK_OVPN_INCLUDED_ROUTES},${SURFSHARK_OVPN_EXTRA_INCLUDED_ROUTES}" "dev surfshark-ovpn"
+add_routes "\${SURFSHARK_OVPN_REMOTE_IP},${SURFSHARK_EXCLUDED_ROUTES},${SURFSHARK_EXTRA_EXCLUDED_ROUTES}" "via ${DEFAULT_ROUTE_VIA}"
+add_routes "${SURFSHARK_INCLUDED_ROUTES},${SURFSHARK_EXTRA_INCLUDED_ROUTES}" "dev surfshark0"
 EOF
 
 SURFSHARK_OVPN_CONF_FILE="$(mktemp)"
@@ -70,7 +68,7 @@ client
 proto ${SURFSHARK_OVPN_PROTOCOL}
 remote ${SURFSHARK_OVPN_REMOTE_HOST} ${SURFSHARK_OVPN_REMOTE_PORT}
 remote-cert-tls server
-dev surfshark-ovpn
+dev surfshark0
 dev-type tun
 tun-mtu 1280
 nobind
@@ -152,22 +150,22 @@ b260f4b45dec3285875589c97d3087c9
 </tls-auth>
 EOF
 
-SURFSHARK_OVPN_EXCLUDED_HOSTS_UPDATE_SCRIPT="$(mktemp)"
-chmod +x "${SURFSHARK_OVPN_EXCLUDED_HOSTS_UPDATE_SCRIPT}"
-cat << EOF > "${SURFSHARK_OVPN_EXCLUDED_HOSTS_UPDATE_SCRIPT}"
+SURFSHARK_UPDATE_EXCLUDED_HOSTS_SCRIPT="$(mktemp)"
+chmod +x "${SURFSHARK_UPDATE_EXCLUDED_HOSTS_SCRIPT}"
+cat << EOF > "${SURFSHARK_UPDATE_EXCLUDED_HOSTS_SCRIPT}"
 #!/bin/sh
 set -e
-for HOST in \$(echo "${SURFSHARK_OVPN_EXCLUDED_HOSTS}" | tr , "\n"); do
+for HOST in \$(echo "${SURFSHARK_EXCLUDED_HOSTS}" | tr , "\n"); do
 	[[ -z "\${HOST}" ]] && continue
 	for IP in \$(nslookup -type=A "\${HOST}" | awk '/^Address: / { print \$2 }'); do
 		[[ "\$(ip route show "\${IP}" | wc -l)" -eq 0 ]] && ip route add "\${IP}" via ${DEFAULT_ROUTE_VIA}
 	done
 done
 EOF
-sh "${SURFSHARK_OVPN_EXCLUDED_HOSTS_UPDATE_SCRIPT}"
+sh "${SURFSHARK_UPDATE_EXCLUDED_HOSTS_SCRIPT}"
 
 mkdir -p /etc/periodic/minutely
-ln -sf "${SURFSHARK_OVPN_EXCLUDED_HOSTS_UPDATE_SCRIPT}" /etc/periodic/minutely/surfshark-ovpn-excluded-hosts-update
+ln -sf "${SURFSHARK_UPDATE_EXCLUDED_HOSTS_SCRIPT}" /etc/periodic/minutely/surfshark-update-excluded-hosts-update
 cat << EOF > /etc/crontabs/root
 # min   hour    day     month   weekday command
 *       *       *       *       *       run-parts /etc/periodic/minutely
@@ -180,8 +178,8 @@ EOF
 crond
 
 if [[ $# -gt 0 ]]; then
-	openvpn --daemon surfshark-ovpn --config "${SURFSHARK_OVPN_CONF_FILE}"
-	while [[ ! -d /sys/class/net/surfshark-ovpn ]]; do sleep 0.1; done
+	openvpn --daemon surfshark --config "${SURFSHARK_OVPN_CONF_FILE}"
+	while [[ ! -d /sys/class/net/surfshark0 ]]; do sleep 0.1; done
 	exec "$@"
 else
 	exec openvpn --config "${SURFSHARK_OVPN_CONF_FILE}"
