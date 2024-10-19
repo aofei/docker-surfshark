@@ -44,9 +44,9 @@ chmod +x "${ADD_ROUTES_SCRIPT}"
 cat << EOF > "${ADD_ROUTES_SCRIPT}"
 #!/bin/sh
 set -e
-for ROUTE in \$(echo "\$1" | tr , "\n"); do
-	[[ -z "\${ROUTE}" ]] && continue
-	ip route show "\${ROUTE}" | grep -q . || ip route add "\${ROUTE}" \$2
+for ROUTE in \${1//,/ }; do
+	ip route show "\${ROUTE}" | grep -q . && continue
+	ip route add "\${ROUTE}" \$2
 done
 EOF
 
